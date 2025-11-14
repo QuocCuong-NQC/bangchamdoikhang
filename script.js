@@ -48,7 +48,7 @@ let state = {
 };
 window.state = state; // Đưa ra global scope để dễ debug
 
-// ** ĐÃ XÓA CỜ CỤC BỘ isProcessingConsensus - CHUYỂN SANG DÙNG KHÓA TOÀN CỤC TRÊN FIREBASE **
+// ** Cờ cục bộ đã được loại bỏ, thay bằng Global Lock trên Firebase **
 
 /* DOM (Lấy các phần tử HTML) */
 const displayRedScore = document.getElementById('displayRedScore');
@@ -405,7 +405,7 @@ window.resetLocal = resetLocal; // Gán vào window
 
 
 /* ================================================================
-PHẦN 3: LOGIC FIREBASE (Code chính đã sửa lỗi)
+PHẦN 3: LOGIC FIREBASE (Code chính đã sửa lỗi V5.6)
 ================================================================
 */
 
@@ -435,7 +435,7 @@ window.startOrResumeTimer = async function(){
     const timePerRound = DEFAULT_ROUND_TIME;
     const isRest = selectedMode === 'rest';
 
-    // *** LOGIC SỬA LỖI: Nếu còn thời gian (>0) và đang dừng, thì chỉ TIẾP TỤC (RESUME) ***
+    // *** LOGIC: Nếu còn thời gian (>0) và đang dừng, thì chỉ TIẾP TỤC (RESUME) ***
     if (!state.timerRunning && !state.restRunning) {
         if (!isRest && state.timeLeft > 0) {
             // Chỉ resume nếu có thời gian còn lại
@@ -447,7 +447,7 @@ window.startOrResumeTimer = async function(){
             return;
         }
     }
-    // *** END LOGIC SỬA LỖI ***
+    // *** END LOGIC ***
 
     // Logic START/RESET NEW ROUND (chỉ chạy khi thời gian đã hết hoặc chưa từng chạy)
     if(isRest){
@@ -470,7 +470,7 @@ window.startOrResumeTimer = async function(){
 }
 
 window.pauseTimer = async function(){
-    // *** ĐÃ THÊM LOGIC QUAN TRỌNG: LƯU THỜI GIAN CÒN LẠI HIỆN TẠI VÀO DB ***
+    // *** LƯU THỜI GIAN CÒN LẠI HIỆN TẠI VÀO DB ***
     await window.setMatchKey('timeLeft', state.timeLeft);
     await window.setMatchKey('restLeft', state.restLeft);
 
@@ -502,6 +502,7 @@ window.resetAll = async function(){
     await window.setMatchKey('roundLabel', 'round1');
     await window.setMatchKey('roundLabelText', 'Hiệp 1');
     await window.setMatchKey('lastWinner', ''); // Clear winner
+    await window.setMatchKey('consensusLock', false); // Clear the lock
 
     // Clear all votes and awards history
     await remove(votesRef);
@@ -528,9 +529,8 @@ window.pushVote = async function(voteData){
 }
 
 
-/* --------------- CORE LOGIC: CHECK CONSENSUS AND AWARD POINTS (V5.5 - GLOBAL LOCK) --------------- */
+/* --------------- CORE LOGIC: CHECK CONSENSUS AND AWARD POINTS (V5.6 - GLOBAL LOCK IMPROVED) --------------- */
 function checkConsensusAndAwardPointsLogic(allVotes) {
-    // Đã xóa cờ isProcessingConsensus cục bộ
     const now = Date.now();
     
     // 1. Lọc và Ưu tiên votes: Chỉ lấy vote mới nhất của mỗi giám định trong cửa sổ 2s (Rule 5)
@@ -622,6 +622,7 @@ function checkConsensusAndAwardPointsLogic(allVotes) {
 
             // C. Xóa TẤT CẢ votes đã dùng
             allVoteKeysInWindow.forEach(voteKey => {
+                // Sử dụng set(..., null) để xóa
                 set(ref(db, `votes/${voteKey}`), null);
             });
             
@@ -629,14 +630,14 @@ function checkConsensusAndAwardPointsLogic(allVotes) {
             quickPointFlash(winningSide);
             
             // E. QUAN TRỌNG: Giải phóng Global Lock sau khi hoàn tất
-            // Đợi 300ms để đảm bảo lệnh xóa votes đã bắt đầu lan truyền
+            // ĐÃ TĂNG THỜI GIAN CHỜ LÊN 800ms để đảm bảo lệnh xóa votes được đồng bộ trên các thiết bị.
             setTimeout(() => {
                 set(lockRef, false); 
-            }, 300); 
+            }, 800); 
 
         }).catch(err => {
             console.error('Award/Lock Transaction Failed:', err);
-            // Cố gắng giải phóng khóa khi có lỗi
+            // Luôn cố gắng giải phóng khóa khi có lỗi
             set(lockRef, false); 
         });
         
