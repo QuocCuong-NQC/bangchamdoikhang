@@ -1,18 +1,43 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js";
-import { getDatabase, ref, push, set, onValue, runTransaction, remove } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-database.js";
+/* ================================================================
+PHẦN 1: CẤU HÌNH FIREBASE
+================================================================
+*/
+import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
+import { getDatabase, ref, set, push, onValue, runTransaction, remove } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyArFyjGuW7fBuRYu8jOGw_03OQQXtQjcj8",
+  authDomain: "ipes-2b9db.firebaseapp.com",
+  databaseURL: "https://ipes-2b9db-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "ipes-2b9db",
+  storageBucket: "ipes-2b9db.firebasestorage.app",
+  messagingSenderId: "410102574315",
+  appId: "1:410102574315:web:191862efacd5e14a62e2ae",
+  measurementId: "G-SCKTXEWZ6E"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+const matchRef = ref(db, 'match');
+const votesRef = ref(db, 'votes');
+const awardsRef = ref(db, 'awards');
+
+
+/* ================================================================
+PHẦN 2: LOGIC CỤC BỘ (LOCAL STATE & UI)
+================================================================
+*/
 
 /* CÁC GIÁ TRỊ THỜI GIAN CỐ ĐỊNH */
 const DEFAULT_ROUND_TIME = 90; // 1 phút 30 giây
 const DEFAULT_REST_TIME = 30; // 30 giây
-const VOTE_WINDOW = 1500; // 1.5 giây
+const VOTE_WINDOW = 2000; // 2 giây (Theo bộ quy tắc mới nhất)
 
-/* STATE */
+/* STATE (Trạng thái cục bộ, sẽ được đồng bộ bởi Firebase) */
 let state = {
   redScore:0, blueScore:0, round:1,
   timePerRound:DEFAULT_ROUND_TIME, timeLeft:DEFAULT_ROUND_TIME, timerRunning:false, lastUpdate:Date.now(),
   restTime:DEFAULT_REST_TIME, restLeft:DEFAULT_REST_TIME, restRunning:false,
-  votes:[], 
-  processedAwardKeys:new Set(), 
   judgeLightTimeouts:{},
   roundLabel:'round1',
   roundLabelText:'Hiệp 1',
@@ -21,8 +46,9 @@ let state = {
   eventTitle:'',
   eventSub:''
 };
+window.state = state; // Đưa ra global scope để dễ debug
 
-/* DOM */
+/* DOM (Lấy các phần tử HTML) */
 const displayRedScore = document.getElementById('displayRedScore');
 const displayBlueScore = document.getElementById('displayBlueScore');
 const displayRedName = document.getElementById('displayRedName');
@@ -38,29 +64,25 @@ const eventTitle = document.getElementById('eventTitle');
 const eventSubDisplay = document.getElementById('displayEventSub');
 const eventSubInput = document.getElementById('eventSubInput');
 
-/* selected round mode: 'round1','round2','round3','rest' (default round1) */
 let selectedMode = 'round1';
 
-/* UTILS */
+/* UTILS (Hàm tiện ích) */
 function formatTime(sec){ const m = Math.floor(sec/60).toString().padStart(2,'0'); const s = (sec%60).toString().padStart(2,'0'); return `${m}:${s}`; }
+window.formatTime = formatTime; 
 
 function updateDisplay(){
   displayRedScore.innerText = state.redScore;
   displayBlueScore.innerText = state.blueScore;
 
-  // round label: prefer roundLabelText from DB/state if present
   if(state.roundLabelText) displayRound.innerText = state.roundLabelText;
   else {
     if(selectedMode === 'rest') displayRound.innerText = 'Giải lao';
     else {
       const rnum = parseInt(inputRound.value) || state.round || 1;
-      if(selectedMode === 'round1') displayRound.innerText = 'Hiệp ' + rnum;
-      else if(selectedMode === 'round2') displayRound.innerText = 'Hiệp ' + (rnum>=2? rnum : 2);
-      else if(selectedMode === 'round3') displayRound.innerText = 'Hiệp ' + (rnum>=3? rnum : 3);
+      displayRound.innerText = `Hiệp ${rnum}`;
     }
   }
 
-  // compute shown time: if remote timer running, compute remaining using lastUpdate
   displayClock.innerText = formatTime(state.restRunning ? state.restLeft : state.timeLeft);
   displayRedName.innerText = state.redName || redNameInput.value || 'VĐV ĐỎ';
   displayBlueName.innerText = state.blueName || blueNameInput.value || 'VĐV XANH';
@@ -68,6 +90,7 @@ function updateDisplay(){
   eventSubDisplay.innerText = state.eventSub || eventSubInput.value || '';
   document.title = `${displayRedName.innerText} ${state.redScore}-${state.blueScore} ${displayBlueName.innerText}`;
 }
+window.updateDisplay = updateDisplay; 
 
 /* judge lights creation */
 function createJudgeLights(){
@@ -84,7 +107,7 @@ function createJudgeLights(){
   }
 }
 
-/* overlay show points for judge light: hide badge/sub and show +X big */
+/* overlay show points for judge light */
 function showJudgeOverlay(judge, side, points, dur=VOTE_WINDOW){
   const el = document.getElementById(`light-${side}-${judge}`);
   if(!el) return;
@@ -97,6 +120,7 @@ function showJudgeOverlay(judge, side, points, dur=VOTE_WINDOW){
   if(state.judgeLightTimeouts[`${judge}-${side}`]) clearTimeout(state.judgeLightTimeouts[`${judge}-${side}`]);
   state.judgeLightTimeouts[`${judge}-${side}`] = setTimeout(()=>{ if(el){ el.classList.remove('showPoints'); overlay.innerText=''; badge.style.visibility='visible'; sub.style.visibility='visible'; el.classList.remove('on'); } delete state.judgeLightTimeouts[`${judge}-${side}`]; }, dur);
 }
+window.showJudgeOverlay = showJudgeOverlay; 
 
 /* quick flash for +point (short) */
 function quickPointFlash(side){
@@ -105,11 +129,13 @@ function quickPointFlash(side){
   flash.style.opacity = '0.9';
   setTimeout(()=>{ flash.style.opacity = '0'; }, 900); // ~1s flash
 }
+window.quickPointFlash = quickPointFlash; 
 
 /* flash message */
 function flashMessage(txt){
   const el = document.createElement('div'); el.style.position='fixed'; el.style.left='50%'; el.style.top='18px'; el.style.transform='translateX(-50%)'; el.style.background='linear-gradient(90deg,#121216,#0b0b0b)'; el.style.padding='10px 14px'; el.style.borderRadius='10px'; el.style.boxShadow='0 12px 40px rgba(0,0,0,0.6)'; el.style.zIndex=9999; el.style.color='#fff'; el.style.opacity='0'; el.style.transition='opacity .16s ease'; el.innerText = txt; document.body.appendChild(el); requestAnimationFrame(()=>el.style.opacity=1); setTimeout(()=>{ el.style.opacity=0; setTimeout(()=>el.remove(),300); },1600);
 }
+window.flashMessage = flashMessage; 
 
 /* BEEP SOUNDS via WebAudio (no external files) */
 function playTone(freq, duration=0.14, when=0, ctx=null){
@@ -131,12 +157,13 @@ function playTone(freq, duration=0.14, when=0, ctx=null){
   }catch(e){ console.warn('tone err', e); }
 }
 function playStartBeep(){ playTone(880, 0.12); } // single short
-// Âm thanh "keng keng" khi hết giờ/trận/giải lao
 function playEndGameBeep(){
   playTone(980, 0.2, 0);
   setTimeout(()=>playTone(980,0.2,0), 300);
 }
 function playWinBeep(){ playTone(1200,0.12); } // optional single flourish for winner
+window.playStartBeep = playStartBeep;
+window.playEndGameBeep = playEndGameBeep;
 
 /* WIN flash: blink whole card for 5s (0.5s on/off) + sound */
 function winnerFlash(side){
@@ -146,32 +173,30 @@ function winnerFlash(side){
   if(!flash || !card) return;
   card.style.position = card.style.position || 'relative';
   let visible = false;
-  // play small win beep once at start
   playWinBeep();
   const interval = setInterval(()=> {
     visible = !visible;
     flash.style.opacity = visible ? '0.98' : '0';
-  }, 500); // 0.5s toggle
-  // stop after 5 seconds
+  }, 500); 
   setTimeout(()=>{
     clearInterval(interval);
     flash.style.opacity = '0';
   }, 5000);
 }
+window.winnerFlash = winnerFlash;
 
-/* ADMIN manual score */
-function manualScore(side, delta){
-  if(window._manualScore) return window._manualScore(side, delta);
+/* ADMIN manual score (gán vào window để HTML gọi được) */
+window.manualScore = function(side, delta){
+  if(window._manualScore) return window._manualScore(side, delta); 
+  // Fallback nếu Firebase chưa tải
   if(side==='red') state.redScore = Math.max(-999, state.redScore + delta);
   else state.blueScore = Math.max(-999, state.blueScore + delta);
-  // write to DB if available (keeps in sync)
-  if(window.setMatchKey) window.setMatchKey(side+'Score', side==='red' ? state.redScore : state.blueScore);
   updateDisplay();
   flashMessage((delta>0?'+':'')+delta+' '+(side==='red'?'ĐỎ':'XANH')+' (TT)');
 }
 
-/* judgeVote: push vote to Firebase (only), show small local light for 1s */
-function judgeVote(judge, side, points){
+/* judgeVote (gán vào window để HTML gọi được) */
+window.judgeVote = function(judge, side, points){
   if(window.pushVote){
     window.pushVote({
       judge: judge,
@@ -179,16 +204,25 @@ function judgeVote(judge, side, points){
       points: points,
       timestamp: Date.now()
     }).catch(err => console.error('pushVote err', err));
-    // show small immediate feedback light (no big flash, just indicate button hit)
+    
+    // Tách biệt logic đèn tín hiệu: Sáng đèn 1s để báo đã bấm
     const el = document.getElementById(`light-${side}-${judge}`);
     if(el){ 
-      // show overlay briefly using existing UI
       const overlay = el.querySelector('.overlay');
       overlay.innerText = '+' + points;
       el.classList.add('on','showPoints');
       const badge = el.querySelector('.badge'), sub = el.querySelector('.sub');
       badge.style.visibility='hidden'; sub.style.visibility='hidden';
-      setTimeout(()=>{ if(el){ el.classList.remove('showPoints'); overlay.innerText=''; badge.style.visibility='visible'; sub.style.visibility='visible'; el.classList.remove('on'); } }, 900);
+      // Tắt đèn tín hiệu sau 1s (1000ms), không đợi VOTE_WINDOW
+      setTimeout(()=>{ 
+          if(el){ 
+              el.classList.remove('showPoints'); 
+              overlay.innerText=''; 
+              badge.style.visibility='visible'; 
+              sub.style.visibility='visible'; 
+              el.classList.remove('on'); 
+          } 
+      }, 1000); 
     }
   } else {
     flashMessage("Lỗi: Không kết nối DB (Firebase).");
@@ -256,6 +290,8 @@ function setSelectedModeLocal(mode){
   if(mode === 'rest') document.getElementById('selRest').classList.add('active');
   updateDisplay();
 }
+window.setSelectedModeLocal = setSelectedModeLocal; // Gán vào window
+
 document.getElementById('selRound1').addEventListener('click', ()=> setRound('Hiệp 1', 'round1', 1));
 document.getElementById('selRound2').addEventListener('click', ()=> setRound('Hiệp 2', 'round2', 2));
 document.getElementById('selRound3').addEventListener('click', ()=> setRound('Hiệp 3', 'round3', 3));
@@ -264,7 +300,8 @@ document.getElementById('selRest').addEventListener('click', ()=> setRound('Gi�
 /* Bind admin control buttons - existing functions may be provided by Firebase module; we keep compatibility */
 (function bindControlButtons(){
   const el = id => document.getElementById(id);
-  if(el('btnStart')) el('btnStart').addEventListener('click', ()=> { if(window.startTimer) window.startTimer(); else { startTimerLocal(); } });
+  // ** Đã đổi btnStart để gọi startOrResumeTimer **
+  if(el('btnStart')) el('btnStart').addEventListener('click', ()=> { if(window.startOrResumeTimer) window.startOrResumeTimer(); else { startTimerLocal(); } });
   if(el('btnPause')) el('btnPause').addEventListener('click', ()=> { if(window.pauseTimer) window.pauseTimer(); else { pauseTimerLocal(); } });
   if(el('btnResume')) el('btnResume').addEventListener('click', ()=> { if(window.resumeTimer) window.resumeTimer(); else { resumeTimerLocal(); } });
   if(el('btnReset')) el('btnReset').addEventListener('click', ()=> {
@@ -348,8 +385,6 @@ function resetLocal(){
   state.redScore = 0; state.blueScore = 0; state.round = 1;
   state.timePerRound = DEFAULT_ROUND_TIME; state.timeLeft = DEFAULT_ROUND_TIME; state.timerRunning = false;
   state.restTime = DEFAULT_REST_TIME; state.restLeft = DEFAULT_REST_TIME; state.restRunning = false;
-  state.votes = [];
-  state.processedAwardKeys = new Set();
   inputRound.value = 1; // reset input
   selectedMode = 'round1';
   setSelectedModeLocal('round1');
@@ -358,29 +393,15 @@ function resetLocal(){
   if(_localTimerInterval) clearInterval(_localTimerInterval);
   flashMessage("Đã reset cục bộ về 0-0.");
 }
+window.resetLocal = resetLocal; // Gán vào window
 
 /* -------------------- End local timer fallback -------------------- */
 
 
-/* -------------------- Start Firebase module (Sử dụng cú pháp module) -------------------- */
-
-/* ---------- Firebase config ---------- */
-const firebaseConfig = {
-  apiKey: "AIzaSyArFyjGuW7fBuRYu8jOGw_03OQQXtQjcj8",
-  authDomain: "ipes-2b9db.firebaseapp.com",
-  databaseURL: "https://ipes-2b9db-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "ipes-2b9db",
-  storageBucket: "ipes-2b9db.firebasestorage.app",
-  messagingSenderId: "410102574315",
-  appId: "1:410102574315:web:191862efacd5e14a62e2ae",
-  measurementId: "G-SCKTXEWZ6E"
-};
-
-const app = initializeApp(firebaseConfig);
-const db = getDatabase(app);
-const matchRef = ref(db, 'match');
-const votesRef = ref(db, 'votes');
-const awardsRef = ref(db, 'awards');
+/* ================================================================
+PHẦN 3: LOGIC FIREBASE (Code chính đã sửa lỗi)
+================================================================
+*/
 
 /* helper to update match keys */
 window.setMatchKey = async function(key, val){
@@ -402,26 +423,27 @@ window.setRound = async function(displayLabel, modeKey, roundNumber){
   updateDisplay();
 }
 
-
-/* Hàm debounce để tránh lỗi race condition khi xử lý votes */
-let _consensusDebounceTimeout = null;
-function debounceConsensus(callback, delay = 150) { // Tăng nhẹ delay lên 150ms để ổn định hơn
-    if (_consensusDebounceTimeout) {
-        clearTimeout(_consensusDebounceTimeout);
-    }
-    _consensusDebounceTimeout = setTimeout(() => {
-        callback();
-        _consensusDebounceTimeout = null; // Reset timeout ID
-    }, delay);
-}
-
-
-/* admin control functions (use setMatchKey to sync state) */
-window.startTimer = async function(){
+// ** CHỨC NĂNG MỚI: START HOẶC RESUME (KHÔNG RESET NẾU CÓ THỜI GIAN CÒN LẠI) **
+window.startOrResumeTimer = async function(){
     const r = Math.max(1, parseInt(inputRound.value) || 1);
     const timePerRound = DEFAULT_ROUND_TIME;
     const isRest = selectedMode === 'rest';
 
+    // *** LOGIC SỬA LỖI: Nếu còn thời gian (>0) và đang dừng, thì chỉ TIẾP TỤC (RESUME) ***
+    if (!state.timerRunning && !state.restRunning) {
+        if (!isRest && state.timeLeft > 0) {
+            // Chỉ resume nếu có thời gian còn lại
+            await window.resumeTimer(); 
+            return;
+        } else if (isRest && state.restLeft > 0) {
+            // Chỉ resume giải lao nếu có thời gian còn lại
+            await window.resumeTimer(); 
+            return;
+        }
+    }
+    // *** END LOGIC SỬA LỖI ***
+
+    // Logic START/RESET NEW ROUND (chỉ chạy khi thời gian đã hết hoặc chưa từng chạy)
     if(isRest){
         await window.setMatchKey('restLeft', DEFAULT_REST_TIME);
         await window.setMatchKey('restRunning', true);
@@ -431,7 +453,7 @@ window.startTimer = async function(){
     } else {
         await window.setMatchKey('round', r);
         await window.setMatchKey('timePerRound', timePerRound);
-        await window.setMatchKey('timeLeft', timePerRound);
+        await window.setMatchKey('timeLeft', timePerRound); // RESET VỀ 90s
         await window.setMatchKey('timerRunning', true);
         await window.setMatchKey('restRunning', false);
         await window.setMatchKey('roundLabel', selectedMode || 'round1');
@@ -442,6 +464,10 @@ window.startTimer = async function(){
 }
 
 window.pauseTimer = async function(){
+    // *** ĐÃ THÊM LOGIC QUAN TRỌNG: LƯU THỜI GIAN CÒN LẠI HIỆN TẠI VÀO DB ***
+    await window.setMatchKey('timeLeft', state.timeLeft);
+    await window.setMatchKey('restLeft', state.restLeft);
+
     await window.setMatchKey('timerRunning', false);
     await window.setMatchKey('restRunning', false);
     await window.setMatchKey('lastUpdate', Date.now());
@@ -496,82 +522,108 @@ window.pushVote = async function(voteData){
 }
 
 
-/* --------------- CORE LOGIC: CHECK CONSENSUS AND AWARD POINTS --------------- */
+/* Hàm debounce để tránh lỗi race condition khi xử lý votes */
+let _consensusDebounceTimeout = null;
+function debounceConsensus(callback, delay = 150) { // Đợi 150ms
+    if (_consensusDebounceTimeout) {
+        clearTimeout(_consensusDebounceTimeout);
+    }
+    _consensusDebounceTimeout = setTimeout(() => {
+        callback();
+        _consensusDebounceTimeout = null; // Reset timeout ID
+    }, delay);
+}
+
+
+/* --------------- CORE LOGIC: CHECK CONSENSUS AND AWARD POINTS (V5.2) --------------- */
 function checkConsensusAndAwardPointsLogic(allVotes) {
   const now = Date.now();
   
-  // 1. Lọc ra các votes MỚI NHẤT trong cửa sổ VOTE_WINDOW (1500ms)
+  // 1. Lọc và ưu tiên votes (Chống spam - Rule 5)
+  // Chỉ lấy vote mới nhất của mỗi giám định trong cửa sổ 2s
   const recentVotes = Object.entries(allVotes || {}).filter(([key, vote]) => {
-    // Votes hợp lệ: trong cửa sổ thời gian 1500ms
     return (now - vote.timestamp) <= VOTE_WINDOW;
   }).map(([key, vote]) => ({ ...vote, key }));
 
-  if (recentVotes.length < 2) return; // Cần ít nhất 2 vote để có đồng thuận
+  const prioritizedVotes = {}; // Key: judgeId, Value: {vote}
+  recentVotes.slice().reverse().forEach(v => {
+    if (!prioritizedVotes[v.judge]) {
+      prioritizedVotes[v.judge] = v;
+    }
+  });
+  const finalVotes = Object.values(prioritizedVotes); 
 
-  // 2. Gom nhóm votes theo Side và Points
-  const consensusMap = {};
-  recentVotes.forEach(vote => {
-    const key = `${vote.side}-${vote.points}`; // Ví dụ: red-2 hoặc blue-1
-    if (!consensusMap[key]) {
-      consensusMap[key] = {
-        side: vote.side,
-        points: vote.points,
-        count: 0,
-        judges: [], // lưu lại judge ID để bật đèn
-        voteKeys: [] // lưu lại key của vote
+  if (finalVotes.length < 2) return; // Cần ít nhất 2 vote để có đồng thuận (2/3)
+
+  // 2. Kiểm tra đa số VĐV (Rule 3, 6)
+  const redVotes = finalVotes.filter(v => v.side === 'red');
+  const blueVotes = finalVotes.filter(v => v.side === 'blue');
+  
+  let winningSide = null;
+  let votesForWinningSide = [];
+
+  // LƯU Ý QUAN TRỌNG: Phải có ít nhất 2 vote để tính (>=2) VÀ phải là đa số (>)
+  if (redVotes.length >= 2 && redVotes.length > blueVotes.length) {
+    winningSide = 'red';
+    votesForWinningSide = redVotes;
+  } else if (blueVotes.length >= 2 && blueVotes.length > redVotes.length) {
+    winningSide = 'blue';
+    votesForWinningSide = blueVotes;
+  } else {
+    return; // Không có đa số VĐV (ví dụ: 1 Đỏ, 1 Xanh)
+  }
+
+  // 3. Kiểm tra đa số Loại điểm (Rule 2, 4, 7)
+  const point1Count = votesForWinningSide.filter(v => v.points === 1).length;
+  const point2Count = votesForWinningSide.filter(v => v.points === 2).length;
+  
+  let awardedPoints = 0;
+
+  // LƯU Ý QUAN TRỌNG: Cần ít nhất 2 vote đồng thuận loại điểm.
+  if (point1Count >= 2 && point1Count >= point2Count) {
+    awardedPoints = 1; // 2x(+1) vs 1x(+2) -> +1
+  } else if (point2Count >= 2 && point2Count > point1Count) {
+    awardedPoints = 2; // 2x(+2) vs 1x(+1) -> +2
+  } else {
+    return; // Không đồng thuận loại điểm (ví dụ: 1x(+1) và 1x(+2))
+  }
+
+  // 4. Đã đạt đồng thuận -> Cộng điểm và Dọn dẹp
+  if (awardedPoints > 0) {
+    // Lấy TẤT CẢ keys của votes trong cửa sổ 2s để xóa (kể cả những votes không được dùng)
+    const allVoteKeysInWindow = recentVotes.map(v => v.key);
+    
+    // A. Tăng điểm (dùng runTransaction)
+    runTransaction(ref(db, `match/${winningSide}Score`), (currentScore) => {
+      if (currentScore === null) currentScore = 0;
+      return currentScore + awardedPoints; 
+    }).then(transactionResult => {
+      // Chỉ tiếp tục nếu điểm đã được cộng thành công
+      if (!transactionResult.committed) return;
+
+      // B. Ghi nhận Award
+      const awardId = push(awardsRef).key;
+      const awardData = {
+        awardId: awardId,
+        side: winningSide,
+        points: awardedPoints,
+        judges: votesForWinningSide.map(v => v.judge), // Chỉ lưu GĐ đã vote đúng
+        timestamp: Date.now(),
+        voteKeys: allVoteKeysInWindow 
       };
-    }
-    consensusMap[key].count++;
-    consensusMap[key].judges.push(vote.judge);
-    consensusMap[key].voteKeys.push(vote.key);
-  });
+      set(ref(db, `awards/${awardId}`), awardData);
 
-  // 3. Kiểm tra điều kiện đồng thuận (>= 2/3)
-  for (const key in consensusMap) {
-    const { side, points, count, judges, voteKeys } = consensusMap[key];
-    
-    if (count >= 2) { // 2/3 Giám định đồng thuận
-      // Đã đạt đồng thuận, tiến hành trao điểm
-      
-      // A. Tăng điểm (dùng runTransaction để đảm bảo atomic)
-      runTransaction(ref(db, `match/${side}Score`), (currentScore) => {
-        if (currentScore === null) currentScore = 0;
-        // Trả về giá trị mới
-        return currentScore + points; 
-      }).then(transactionResult => {
-        // Chỉ tiếp tục nếu điểm đã được cộng thành công
-        if (!transactionResult.committed) return;
-
-        // B. Ghi nhận Award
-        const awardId = push(awardsRef).key;
-        const awardData = {
-          awardId: awardId,
-          side: side,
-          points: points,
-          judges: judges,
-          timestamp: Date.now(),
-          voteKeys: voteKeys // lưu lại keys của votes đã dùng
-        };
-        
-        // Ghi award
-        set(ref(db, `awards/${awardId}`), awardData);
-
-        // C. Đánh dấu votes đã được xử lý bằng cách xóa chúng
-        // Đây là bước QUAN TRỌNG NHẤT để ngăn chặn việc xử lý lặp lại/cộng điểm kép
-        voteKeys.forEach(voteKey => {
-          remove(ref(db, `votes/${voteKey}`)); 
-        });
-        
-        // D. Hiển thị trên màn hình local
-        quickPointFlash(side);
-
-      }).catch(err => {
-        console.error('Award Transaction Failed:', err);
+      // C. Xóa TẤT CẢ votes đã dùng trong cửa sổ 2s (Quan trọng nhất)
+      allVoteKeysInWindow.forEach(voteKey => {
+        remove(ref(db, `votes/${voteKey}`)); 
       });
+      
+      // D. Hiển thị trên màn hình local
+      quickPointFlash(winningSide);
 
-      // Chỉ xử lý một lần đồng thuận/cửa sổ. Sau khi tìm thấy đồng thuận, thoát khỏi vòng lặp.
-      return; 
-    }
+    }).catch(err => {
+      console.error('Award Transaction Failed:', err);
+    });
   }
 }
 
@@ -623,13 +675,10 @@ onValue(matchRef, (snapshot) => {
 onValue(awardsRef, (snapshot) => {
   const allAwards = snapshot.val() || {};
   
-  // Ẩn tất cả đèn
-  document.querySelectorAll('.judge-light').forEach(el => el.classList.remove('on'));
-
   // Tìm award mới nhất
   const latestAward = Object.values(allAwards)
     .sort((a,b) => b.timestamp - a.timestamp)
-    .find(award => (Date.now() - award.timestamp) < VOTE_WINDOW); // Chỉ giữ lại các award trong VOTE_WINDOW (1.5s)
+    .find(award => (Date.now() - award.timestamp) < VOTE_WINDOW); // Chỉ giữ lại các award trong VOTE_WINDOW (2s)
 
   if(latestAward){
     // Bật đèn giám định đã tham gia vào award này
@@ -653,41 +702,40 @@ onValue(votesRef, (snapshot) => {
 
 
 // 4. Client-side timer synchronization (Update time every second)
+let lastTickTime = Date.now();
+
 setInterval(() => {
+  const now = Date.now();
+  const elapsedMs = now - lastTickTime;
+
   if(state.timerRunning || state.restRunning){
-    // Calculate elapsed time since last update
-    const elapsed = Math.floor((Date.now() - state.lastUpdate) / 1000);
-    
-    if(state.timerRunning){
-      let newTimeLeft = Math.max(0, state.timeLeft - elapsed);
+    // Đảm bảo chỉ trừ 1 giây khi đủ 1000ms
+    if (elapsedMs >= 1000) { 
+        const secondsElapsed = Math.floor(elapsedMs / 1000); // Số giây thực sự trôi qua
+        lastTickTime = now; // Reset thời gian tick
 
-      if(newTimeLeft === 0){
-        playEndGameBeep();
-        state.timerRunning = false;
-        // If running on Admin device, write 0 and stop running to DB
-        if(window.setMatchKey){
-          window.setMatchKey('timerRunning', false);
-          window.setMatchKey('timeLeft', 0);
-        }
-      } 
-      state.timeLeft = newTimeLeft;
-
-    } else if(state.restRunning){
-      let newRestLeft = Math.max(0, state.restLeft - elapsed);
-
-      if(newRestLeft === 0){
-        playEndGameBeep();
-        state.restRunning = false;
-        // If running on Admin device, write 0 and stop running to DB
-        if(window.setMatchKey){
-          window.setMatchKey('restRunning', false);
-          window.setMatchKey('restLeft', 0);
+      if(state.timerRunning){
+        let newTimeLeft = Math.max(0, state.timeLeft - secondsElapsed);
+        state.timeLeft = newTimeLeft;
+        if(newTimeLeft === 0){
+          playEndGameBeep();
+          state.timerRunning = false;
+          if(window.setMatchKey) window.setMatchKey('timerRunning', false);
+        } 
+      } else if(state.restRunning){
+        let newRestLeft = Math.max(0, state.restLeft - secondsElapsed);
+        state.restLeft = newRestLeft;
+        if(newRestLeft === 0){
+          playEndGameBeep();
+          state.restRunning = false;
+          if(window.setMatchKey) window.setMatchKey('restRunning', false);
         }
       }
-      state.restLeft = newRestLeft;
     }
-  }
+  } else {
+    lastTickTime = now; // Reset tick time khi đồng hồ đang dừng để không bị nhảy khi resume
+  }
   
   updateDisplay();
 
-}, 1000);
+}, 200); // Chạy 5 lần/giây để hiển thị mượt mà hơn
