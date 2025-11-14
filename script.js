@@ -48,6 +48,9 @@ let state = {
 };
 window.state = state; // Đưa ra global scope để dễ debug
 
+// ** CỜ QUAN TRỌNG ĐỂ KHẮC PHỤC LỖI NHÂN ĐIỂM (V5.4) **
+let isProcessingConsensus = false; 
+
 /* DOM (Lấy các phần tử HTML) */
 const displayRedScore = document.getElementById('displayRedScore');
 const displayBlueScore = document.getElementById('displayBlueScore');
@@ -349,6 +352,8 @@ function startTimerLocal(){
         state.timerRunning = false;
         if(window.setMatchKey) { window.setMatchKey('timerRunning', false); window.setMatchKey('timeLeft', 0); }
       } 
+      // FIX: Lỗi đồng hồ nhảy sau 1s dừng
+      if(window.setMatchKey) window.setMatchKey('lastUpdate', Date.now());
     } else if(state.restRunning){
       state.restLeft = Math.max(0, state.restLeft - 1);
       if(window.setMatchKey) window.setMatchKey('restLeft', state.restLeft);
@@ -357,6 +362,8 @@ function startTimerLocal(){
         state.restRunning = false;
         if(window.setMatchKey) { window.setMatchKey('restRunning', false); window.setMatchKey('restLeft', 0); }
       }
+      // FIX: Lỗi đồng hồ nhảy sau 1s dừng
+      if(window.setMatchKey) window.setMatchKey('lastUpdate', Date.now());
     }
     updateDisplay();
   }, 1000);
@@ -510,7 +517,7 @@ window.resetAll = async function(){
 window._manualScore = async function(side, delta){
     const scoreKey = `${side}Score`;
     await runTransaction(ref(db, `match/${scoreKey}`), (currentScore) => {
-        if (currentScore === null) return delta;
+        if (currentScore === null) currentScore = 0;
         return Math.max(-999, currentScore + delta);
     });
     flashMessage((delta>0?'+':'')+delta+' '+(side==='red'?'ĐỎ':'XANH')+' (TT DB)');
@@ -522,109 +529,111 @@ window.pushVote = async function(voteData){
 }
 
 
-/* Hàm debounce để tránh lỗi race condition khi xử lý votes */
-let _consensusDebounceTimeout = null;
-function debounceConsensus(callback, delay = 150) { // Đợi 150ms
-    if (_consensusDebounceTimeout) {
-        clearTimeout(_consensusDebounceTimeout);
-    }
-    _consensusDebounceTimeout = setTimeout(() => {
-        callback();
-        _consensusDebounceTimeout = null; // Reset timeout ID
-    }, delay);
-}
-
-
-/* --------------- CORE LOGIC: CHECK CONSENSUS AND AWARD POINTS (V5.2) --------------- */
+/* --------------- CORE LOGIC: CHECK CONSENSUS AND AWARD POINTS (V5.4 - FIX NHÂN ĐIỂM) --------------- */
 function checkConsensusAndAwardPointsLogic(allVotes) {
-  const now = Date.now();
-  
-  // 1. Lọc và ưu tiên votes (Chống spam - Rule 5)
-  // Chỉ lấy vote mới nhất của mỗi giám định trong cửa sổ 2s
-  const recentVotes = Object.entries(allVotes || {}).filter(([key, vote]) => {
-    return (now - vote.timestamp) <= VOTE_WINDOW;
-  }).map(([key, vote]) => ({ ...vote, key }));
+    if (isProcessingConsensus) return; // QUAN TRỌNG: KHÓA XỬ LÝ NẾU ĐANG CỘNG ĐIỂM
 
-  const prioritizedVotes = {}; // Key: judgeId, Value: {vote}
-  recentVotes.slice().reverse().forEach(v => {
-    if (!prioritizedVotes[v.judge]) {
-      prioritizedVotes[v.judge] = v;
-    }
-  });
-  const finalVotes = Object.values(prioritizedVotes); 
-
-  if (finalVotes.length < 2) return; // Cần ít nhất 2 vote để có đồng thuận (2/3)
-
-  // 2. Kiểm tra đa số VĐV (Rule 3, 6)
-  const redVotes = finalVotes.filter(v => v.side === 'red');
-  const blueVotes = finalVotes.filter(v => v.side === 'blue');
-  
-  let winningSide = null;
-  let votesForWinningSide = [];
-
-  // LƯU Ý QUAN TRỌNG: Phải có ít nhất 2 vote để tính (>=2) VÀ phải là đa số (>)
-  if (redVotes.length >= 2 && redVotes.length > blueVotes.length) {
-    winningSide = 'red';
-    votesForWinningSide = redVotes;
-  } else if (blueVotes.length >= 2 && blueVotes.length > redVotes.length) {
-    winningSide = 'blue';
-    votesForWinningSide = blueVotes;
-  } else {
-    return; // Không có đa số VĐV (ví dụ: 1 Đỏ, 1 Xanh)
-  }
-
-  // 3. Kiểm tra đa số Loại điểm (Rule 2, 4, 7)
-  const point1Count = votesForWinningSide.filter(v => v.points === 1).length;
-  const point2Count = votesForWinningSide.filter(v => v.points === 2).length;
-  
-  let awardedPoints = 0;
-
-  // LƯU Ý QUAN TRỌNG: Cần ít nhất 2 vote đồng thuận loại điểm.
-  if (point1Count >= 2 && point1Count >= point2Count) {
-    awardedPoints = 1; // 2x(+1) vs 1x(+2) -> +1
-  } else if (point2Count >= 2 && point2Count > point1Count) {
-    awardedPoints = 2; // 2x(+2) vs 1x(+1) -> +2
-  } else {
-    return; // Không đồng thuận loại điểm (ví dụ: 1x(+1) và 1x(+2))
-  }
-
-  // 4. Đã đạt đồng thuận -> Cộng điểm và Dọn dẹp
-  if (awardedPoints > 0) {
-    // Lấy TẤT CẢ keys của votes trong cửa sổ 2s để xóa (kể cả những votes không được dùng)
-    const allVoteKeysInWindow = recentVotes.map(v => v.key);
+    const now = Date.now();
     
-    // A. Tăng điểm (dùng runTransaction)
-    runTransaction(ref(db, `match/${winningSide}Score`), (currentScore) => {
-      if (currentScore === null) currentScore = 0;
-      return currentScore + awardedPoints; 
-    }).then(transactionResult => {
-      // Chỉ tiếp tục nếu điểm đã được cộng thành công
-      if (!transactionResult.committed) return;
+    // 1. Lọc và Ưu tiên votes: Chỉ lấy vote mới nhất của mỗi giám định trong cửa sổ 2s (Rule 5)
+    const recentVotes = Object.entries(allVotes || {}).filter(([key, vote]) => {
+        return (now - vote.timestamp) <= VOTE_WINDOW; // VOTE_WINDOW = 2000ms
+    }).map(([key, vote]) => ({ ...vote, key }));
 
-      // B. Ghi nhận Award
-      const awardId = push(awardsRef).key;
-      const awardData = {
-        awardId: awardId,
-        side: winningSide,
-        points: awardedPoints,
-        judges: votesForWinningSide.map(v => v.judge), // Chỉ lưu GĐ đã vote đúng
-        timestamp: Date.now(),
-        voteKeys: allVoteKeysInWindow 
-      };
-      set(ref(db, `awards/${awardId}`), awardData);
+    const prioritizedVotes = {}; // Key: judgeId, Value: {vote}
+    
+    // Lấy vote MỚI NHẤT của mỗi giám định (duy nhất 1 phiếu/giám định)
+    recentVotes.slice().reverse().forEach(v => {
+        if (!prioritizedVotes[v.judge]) {
+            prioritizedVotes[v.judge] = v;
+        }
+    });
+    const finalVotes = Object.values(prioritizedVotes); 
 
-      // C. Xóa TẤT CẢ votes đã dùng trong cửa sổ 2s (Quan trọng nhất)
-      allVoteKeysInWindow.forEach(voteKey => {
-        remove(ref(db, `votes/${voteKey}`)); 
-      });
-      
-      // D. Hiển thị trên màn hình local
-      quickPointFlash(winningSide);
+    if (finalVotes.length < 2) return; // Cần ít nhất 2 vote để có đồng thuận (2/3)
 
-    }).catch(err => {
-      console.error('Award Transaction Failed:', err);
-    });
-  }
+    // 2. Kiểm tra đa số VĐV (Rule 6, 7)
+    const redVotes = finalVotes.filter(v => v.side === 'red');
+    const blueVotes = finalVotes.filter(v => v.side === 'blue');
+    
+    let winningSide = null;
+    let votesForWinningSide = [];
+
+    // Phải có ít nhất 2 vote ĐA SỐ
+    if (redVotes.length >= 2 && redVotes.length > blueVotes.length) {
+        winningSide = 'red';
+        votesForWinningSide = redVotes;
+    } else if (blueVotes.length >= 2 && blueVotes.length > redVotes.length) {
+        winningSide = 'blue';
+        votesForWinningSide = blueVotes;
+    } else {
+        return; // Không có đa số VĐV
+    }
+
+    // 3. Kiểm tra đa số Loại điểm (Rule 2)
+    const point1Count = votesForWinningSide.filter(v => v.points === 1).length;
+    const point2Count = votesForWinningSide.filter(v => v.points === 2).length;
+    
+    let awardedPoints = 0;
+
+    // Cần ít nhất 2 vote đồng thuận loại điểm.
+    if (point1Count >= 2 && point1Count >= point2Count) {
+        awardedPoints = 1; // 2x(+1) vs 1x(+2) -> +1 (Đa số +1 thắng hoặc hòa)
+    } else if (point2Count >= 2 && point2Count > point1Count) {
+        awardedPoints = 2; // 2x(+2) vs 1x(+1) -> +2 (Đa số +2 thắng)
+    } else {
+        return; // Không đồng thuận loại điểm
+    }
+
+    // 4. Đã đạt đồng thuận -> Cộng điểm và Dọn dẹp (Rule 3: Cộng 1 lần duy nhất)
+    if (awardedPoints > 0) {
+        // A. SET LOCK FLAG VÀ KHỞI TẠO XỬ LÝ
+        isProcessingConsensus = true; 
+        
+        // Lấy TẤT CẢ keys của votes trong cửa sổ 2s để xóa 
+        const allVoteKeysInWindow = recentVotes.map(v => v.key);
+        
+        // B. Tăng điểm (dùng runTransaction)
+        runTransaction(ref(db, `match/${winningSide}Score`), (currentScore) => {
+            if (currentScore === null) currentScore = 0;
+            return currentScore + awardedPoints; 
+        }).then(transactionResult => {
+            // Chỉ tiếp tục nếu điểm đã được cộng thành công 
+            if (!transactionResult.committed) return;
+
+            // C. Ghi nhận Award
+            const awardId = push(awardsRef).key;
+            const awardData = {
+                awardId: awardId,
+                side: winningSide,
+                points: awardedPoints,
+                judges: votesForWinningSide.map(v => v.judge), // Chỉ lưu GĐ đã vote đúng
+                timestamp: Date.now(),
+                voteKeys: allVoteKeysInWindow 
+            };
+            set(ref(db, `awards/${awardId}`), awardData);
+
+            // D. Xóa TẤT CẢ votes đã dùng trong cửa sổ 2s (Quan trọng nhất)
+            // Khởi tạo các thao tác xóa
+            allVoteKeysInWindow.forEach(voteKey => {
+                set(ref(db, `votes/${voteKey}`), null);
+            });
+            
+            // E. Hiển thị trên màn hình local
+            quickPointFlash(winningSide);
+            
+            // F. QUAN TRỌNG: Giải phóng lock sau một độ trễ ngắn để Firebase ổn định
+            setTimeout(() => {
+                isProcessingConsensus = false;
+            }, 300); 
+
+        }).catch(err => {
+            console.error('Award Transaction Failed:', err);
+            isProcessingConsensus = false; // Luôn giải phóng lock khi có lỗi
+        });
+        
+        return; // Thoát hàm ngay lập tức sau khi khởi tạo giao dịch
+    }
 }
 
 
@@ -692,12 +701,13 @@ onValue(awardsRef, (snapshot) => {
 
 // 3. Listen for Votes (to check for consensus)
 onValue(votesRef, (snapshot) => {
-  const allVotes = snapshot.val() || {};
+    const allVotes = snapshot.val() || {};
 
-  // Dùng Debounce để giới hạn tốc độ xử lý sự kiện votes (giảm lỗi cộng điểm kép)
-  debounceConsensus(() => {
-    checkConsensusAndAwardPointsLogic(allVotes); 
-  }, 150); // Đợi 150ms để votes ổn định và lệnh xóa votes đầu tiên có thể hoàn tất
+    // QUAN TRỌNG: Ngăn chặn xử lý nếu đang trong quá trình cộng điểm và xóa votes
+    if (isProcessingConsensus) return; 
+    
+    // Không cần debounce nữa, vì cờ isProcessingConsensus đã đảm nhận vai trò này
+    checkConsensusAndAwardPointsLogic(allVotes); 
 });
 
 
