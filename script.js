@@ -48,8 +48,7 @@ let state = {
 };
 window.state = state; // Đưa ra global scope để dễ debug
 
-// ** CỜ QUAN TRỌNG ĐỂ KHẮC PHỤC LỖI NHÂN ĐIỂM (V5.4) **
-let isProcessingConsensus = false; 
+// ** ĐÃ XÓA CỜ CỤC BỘ isProcessingConsensus - CHUYỂN SANG DÙNG KHÓA TOÀN CỤC TRÊN FIREBASE **
 
 /* DOM (Lấy các phần tử HTML) */
 const displayRedScore = document.getElementById('displayRedScore');
@@ -208,7 +207,7 @@ window.judgeVote = function(judge, side, points){
       timestamp: Date.now()
     }).catch(err => console.error('pushVote err', err));
     
-    // Tách biệt logic đèn tín hiệu: Sáng đèn 1s để báo đã bấm
+    // Tách biệt logic đèn tín hiệu: Sáng đèn 1s để báo đã bấm (CHỈ TRÊN THIẾT BỊ BẤM)
     const el = document.getElementById(`light-${side}-${judge}`);
     if(el){ 
       const overlay = el.querySelector('.overlay');
@@ -216,16 +215,16 @@ window.judgeVote = function(judge, side, points){
       el.classList.add('on','showPoints');
       const badge = el.querySelector('.badge'), sub = el.querySelector('.sub');
       badge.style.visibility='hidden'; sub.style.visibility='hidden';
-      // Tắt đèn tín hiệu sau 1s (1000ms), không đợi VOTE_WINDOW
+      // Tắt đèn tín hiệu sau 1s (1000ms), không đợi VOTE_WINDOW
       setTimeout(()=>{ 
-          if(el){ 
-              el.classList.remove('showPoints'); 
-              overlay.innerText=''; 
-              badge.style.visibility='visible'; 
-              sub.style.visibility='visible'; 
-              el.classList.remove('on'); 
-          } 
-      }, 1000); 
+          if(el){ 
+              el.classList.remove('showPoints'); 
+              overlay.innerText=''; 
+              badge.style.visibility='visible'; 
+              sub.style.visibility='visible'; 
+              el.classList.remove('on'); 
+          } 
+      }, 1000); 
     }
   } else {
     flashMessage("Lỗi: Không kết nối DB (Firebase).");
@@ -432,117 +431,114 @@ window.setRound = async function(displayLabel, modeKey, roundNumber){
 
 // ** CHỨC NĂNG MỚI: START HOẶC RESUME (KHÔNG RESET NẾU CÓ THỜI GIAN CÒN LẠI) **
 window.startOrResumeTimer = async function(){
-    const r = Math.max(1, parseInt(inputRound.value) || 1);
-    const timePerRound = DEFAULT_ROUND_TIME;
-    const isRest = selectedMode === 'rest';
+    const r = Math.max(1, parseInt(inputRound.value) || 1);
+    const timePerRound = DEFAULT_ROUND_TIME;
+    const isRest = selectedMode === 'rest';
 
-    // *** LOGIC SỬA LỖI: Nếu còn thời gian (>0) và đang dừng, thì chỉ TIẾP TỤC (RESUME) ***
-    if (!state.timerRunning && !state.restRunning) {
-        if (!isRest && state.timeLeft > 0) {
-            // Chỉ resume nếu có thời gian còn lại
-            await window.resumeTimer(); 
-            return;
-        } else if (isRest && state.restLeft > 0) {
-            // Chỉ resume giải lao nếu có thời gian còn lại
-            await window.resumeTimer(); 
-            return;
-        }
-    }
-    // *** END LOGIC SỬA LỖI ***
+    // *** LOGIC SỬA LỖI: Nếu còn thời gian (>0) và đang dừng, thì chỉ TIẾP TỤC (RESUME) ***
+    if (!state.timerRunning && !state.restRunning) {
+        if (!isRest && state.timeLeft > 0) {
+            // Chỉ resume nếu có thời gian còn lại
+            await window.resumeTimer(); 
+            return;
+        } else if (isRest && state.restLeft > 0) {
+            // Chỉ resume giải lao nếu có thời gian còn lại
+            await window.resumeTimer(); 
+            return;
+        }
+    }
+    // *** END LOGIC SỬA LỖI ***
 
-    // Logic START/RESET NEW ROUND (chỉ chạy khi thời gian đã hết hoặc chưa từng chạy)
-    if(isRest){
-        await window.setMatchKey('restLeft', DEFAULT_REST_TIME);
-        await window.setMatchKey('restRunning', true);
-        await window.setMatchKey('timerRunning', false);
-        await window.setMatchKey('roundLabel', 'rest');
-        await window.setMatchKey('roundLabelText', 'Giải lao');
-    } else {
-        await window.setMatchKey('round', r);
-        await window.setMatchKey('timePerRound', timePerRound);
-        await window.setMatchKey('timeLeft', timePerRound); // RESET VỀ 90s
-        await window.setMatchKey('timerRunning', true);
-        await window.setMatchKey('restRunning', false);
-        await window.setMatchKey('roundLabel', selectedMode || 'round1');
-        await window.setMatchKey('roundLabelText', `Hiệp ${r}`);
-    }
-    await window.setMatchKey('lastUpdate', Date.now());
-    playStartBeep();
+    // Logic START/RESET NEW ROUND (chỉ chạy khi thời gian đã hết hoặc chưa từng chạy)
+    if(isRest){
+        await window.setMatchKey('restLeft', DEFAULT_REST_TIME);
+        await window.setMatchKey('restRunning', true);
+        await window.setMatchKey('timerRunning', false);
+        await window.setMatchKey('roundLabel', 'rest');
+        await window.setMatchKey('roundLabelText', 'Giải lao');
+    } else {
+        await window.setMatchKey('round', r);
+        await window.setMatchKey('timePerRound', timePerRound);
+        await window.setMatchKey('timeLeft', timePerRound); // RESET VỀ 90s
+        await window.setMatchKey('timerRunning', true);
+        await window.setMatchKey('restRunning', false);
+        await window.setMatchKey('roundLabel', selectedMode || 'round1');
+        await window.setMatchKey('roundLabelText', `Hiệp ${r}`);
+    }
+    await window.setMatchKey('lastUpdate', Date.now());
+    playStartBeep();
 }
 
 window.pauseTimer = async function(){
-    // *** ĐÃ THÊM LOGIC QUAN TRỌNG: LƯU THỜI GIAN CÒN LẠI HIỆN TẠI VÀO DB ***
-    await window.setMatchKey('timeLeft', state.timeLeft);
-    await window.setMatchKey('restLeft', state.restLeft);
+    // *** ĐÃ THÊM LOGIC QUAN TRỌNG: LƯU THỜI GIAN CÒN LẠI HIỆN TẠI VÀO DB ***
+    await window.setMatchKey('timeLeft', state.timeLeft);
+    await window.setMatchKey('restLeft', state.restLeft);
 
-    await window.setMatchKey('timerRunning', false);
-    await window.setMatchKey('restRunning', false);
-    await window.setMatchKey('lastUpdate', Date.now());
+    await window.setMatchKey('timerRunning', false);
+    await window.setMatchKey('restRunning', false);
+    await window.setMatchKey('lastUpdate', Date.now());
 }
 
 window.resumeTimer = async function(){
-    const isRest = state.roundLabel === 'rest';
-    if(isRest && state.restLeft > 0){
-        await window.setMatchKey('restRunning', true);
-    } else if(!isRest && state.timeLeft > 0){
-        await window.setMatchKey('timerRunning', true);
-    }
-    await window.setMatchKey('lastUpdate', Date.now());
+    const isRest = state.roundLabel === 'rest';
+    if(isRest && state.restLeft > 0){
+        await window.setMatchKey('restRunning', true);
+    } else if(!isRest && state.timeLeft > 0){
+        await window.setMatchKey('timerRunning', true);
+    }
+    await window.setMatchKey('lastUpdate', Date.now());
 }
 
 window.resetAll = async function(){
-    // Reset core match state
-    await window.setMatchKey('redScore', 0);
-    await window.setMatchKey('blueScore', 0);
-    await window.setMatchKey('round', 1);
-    await window.setMatchKey('timeLeft', DEFAULT_ROUND_TIME);
-    await window.setMatchKey('restLeft', DEFAULT_REST_TIME);
-    await window.setMatchKey('timerRunning', false);
-    await window.setMatchKey('restRunning', false);
-    await window.setMatchKey('lastUpdate', Date.now());
-    await window.setMatchKey('roundLabel', 'round1');
-    await window.setMatchKey('roundLabelText', 'Hiệp 1');
-    await window.setMatchKey('lastWinner', ''); // Clear winner
+    // Reset core match state
+    await window.setMatchKey('redScore', 0);
+    await window.setMatchKey('blueScore', 0);
+    await window.setMatchKey('round', 1);
+    await window.setMatchKey('timeLeft', DEFAULT_ROUND_TIME);
+    await window.setMatchKey('restLeft', DEFAULT_REST_TIME);
+    await window.setMatchKey('timerRunning', false);
+    await window.setMatchKey('restRunning', false);
+    await window.setMatchKey('lastUpdate', Date.now());
+    await window.setMatchKey('roundLabel', 'round1');
+    await window.setMatchKey('roundLabelText', 'Hiệp 1');
+    await window.setMatchKey('lastWinner', ''); // Clear winner
 
-    // Clear all votes and awards history
-    await remove(votesRef);
-    await remove(awardsRef);
-    
-    // Reset local UI
-    resetLocal(); 
-    flashMessage("Đã reset toàn bộ trạng thái thi đấu và lịch sử.");
+    // Clear all votes and awards history
+    await remove(votesRef);
+    await remove(awardsRef);
+    
+    // Reset local UI
+    resetLocal(); 
+    flashMessage("Đã reset toàn bộ trạng thái thi đấu và lịch sử.");
 }
 
 // Override local manualScore to write to DB
 window._manualScore = async function(side, delta){
-    const scoreKey = `${side}Score`;
-    await runTransaction(ref(db, `match/${scoreKey}`), (currentScore) => {
-        if (currentScore === null) currentScore = 0;
-        return Math.max(-999, currentScore + delta);
-    });
-    flashMessage((delta>0?'+':'')+delta+' '+(side==='red'?'ĐỎ':'XANH')+' (TT DB)');
+    const scoreKey = `${side}Score`;
+    await runTransaction(ref(db, `match/${scoreKey}`), (currentScore) => {
+        if (currentScore === null) currentScore = 0;
+        return Math.max(-999, currentScore + delta);
+    });
+    flashMessage((delta>0?'+':'')+delta+' '+(side==='red'?'ĐỎ':'XANH')+' (TT DB)');
 }
 
 /* Push vote to DB */
 window.pushVote = async function(voteData){
-    await push(votesRef, voteData);
+    await push(votesRef, voteData);
 }
 
 
-/* --------------- CORE LOGIC: CHECK CONSENSUS AND AWARD POINTS (V5.4 - FIX NHÂN ĐIỂM) --------------- */
+/* --------------- CORE LOGIC: CHECK CONSENSUS AND AWARD POINTS (V5.5 - GLOBAL LOCK) --------------- */
 function checkConsensusAndAwardPointsLogic(allVotes) {
-    if (isProcessingConsensus) return; // QUAN TRỌNG: KHÓA XỬ LÝ NẾU ĐANG CỘNG ĐIỂM
-
+    // Đã xóa cờ isProcessingConsensus cục bộ
     const now = Date.now();
     
     // 1. Lọc và Ưu tiên votes: Chỉ lấy vote mới nhất của mỗi giám định trong cửa sổ 2s (Rule 5)
     const recentVotes = Object.entries(allVotes || {}).filter(([key, vote]) => {
-        return (now - vote.timestamp) <= VOTE_WINDOW; // VOTE_WINDOW = 2000ms
+        return (now - vote.timestamp) <= VOTE_WINDOW; 
     }).map(([key, vote]) => ({ ...vote, key }));
 
-    const prioritizedVotes = {}; // Key: judgeId, Value: {vote}
-    
-    // Lấy vote MỚI NHẤT của mỗi giám định (duy nhất 1 phiếu/giám định)
+    const prioritizedVotes = {}; 
     recentVotes.slice().reverse().forEach(v => {
         if (!prioritizedVotes[v.judge]) {
             prioritizedVotes[v.judge] = v;
@@ -550,7 +546,7 @@ function checkConsensusAndAwardPointsLogic(allVotes) {
     });
     const finalVotes = Object.values(prioritizedVotes); 
 
-    if (finalVotes.length < 2) return; // Cần ít nhất 2 vote để có đồng thuận (2/3)
+    if (finalVotes.length < 2) return; 
 
     // 2. Kiểm tra đa số VĐV (Rule 6, 7)
     const redVotes = finalVotes.filter(v => v.side === 'red');
@@ -559,7 +555,6 @@ function checkConsensusAndAwardPointsLogic(allVotes) {
     let winningSide = null;
     let votesForWinningSide = [];
 
-    // Phải có ít nhất 2 vote ĐA SỐ
     if (redVotes.length >= 2 && redVotes.length > blueVotes.length) {
         winningSide = 'red';
         votesForWinningSide = redVotes;
@@ -567,7 +562,7 @@ function checkConsensusAndAwardPointsLogic(allVotes) {
         winningSide = 'blue';
         votesForWinningSide = blueVotes;
     } else {
-        return; // Không có đa số VĐV
+        return; 
     }
 
     // 3. Kiểm tra đa số Loại điểm (Rule 2)
@@ -576,68 +571,81 @@ function checkConsensusAndAwardPointsLogic(allVotes) {
     
     let awardedPoints = 0;
 
-    // Cần ít nhất 2 vote đồng thuận loại điểm.
     if (point1Count >= 2 && point1Count >= point2Count) {
-        awardedPoints = 1; // 2x(+1) vs 1x(+2) -> +1 (Đa số +1 thắng hoặc hòa)
+        awardedPoints = 1; 
     } else if (point2Count >= 2 && point2Count > point1Count) {
-        awardedPoints = 2; // 2x(+2) vs 1x(+1) -> +2 (Đa số +2 thắng)
+        awardedPoints = 2; 
     } else {
-        return; // Không đồng thuận loại điểm
+        return; 
     }
 
-    // 4. Đã đạt đồng thuận -> Cộng điểm và Dọn dẹp (Rule 3: Cộng 1 lần duy nhất)
+    // 4. Đã đạt đồng thuận -> Áp dụng GLOBAL LOCK trước khi cộng điểm
     if (awardedPoints > 0) {
-        // A. SET LOCK FLAG VÀ KHỞI TẠO XỬ LÝ
-        isProcessingConsensus = true; 
         
-        // Lấy TẤT CẢ keys của votes trong cửa sổ 2s để xóa 
-        const allVoteKeysInWindow = recentVotes.map(v => v.key);
+        const lockRef = ref(db, 'match/consensusLock');
         
-        // B. Tăng điểm (dùng runTransaction)
-        runTransaction(ref(db, `match/${winningSide}Score`), (currentScore) => {
-            if (currentScore === null) currentScore = 0;
-            return currentScore + awardedPoints; 
-        }).then(transactionResult => {
-            // Chỉ tiếp tục nếu điểm đã được cộng thành công 
-            if (!transactionResult.committed) return;
+        // THỬ CỐ GẮNG KHÓA (Global Lock)
+        runTransaction(lockRef, (currentLock) => {
+            // Nếu khóa rỗng (null) hoặc false, thì cố gắng đặt nó thành true
+            if (currentLock === null || currentLock === false) {
+                return true; // Thiết bị này thành công khóa
+            }
+            return undefined; // Thiết bị đã bị khóa, hủy giao dịch
+        }).then(async (transactionResult) => {
+            if (!transactionResult.committed) {
+                // Khóa thất bại -> thiết bị khác đã xử lý rồi.
+                return; 
+            }
+            // Khóa thành công (Thiết bị này là MASTER)
+            
+            // Lấy TẤT CẢ keys của votes trong cửa sổ 2s để xóa 
+            const allVoteKeysInWindow = recentVotes.map(v => v.key);
+            
+            // A. Tăng điểm
+            const scoreRef = ref(db, `match/${winningSide}Score`);
+            await runTransaction(scoreRef, (currentScore) => {
+                if (currentScore === null) currentScore = 0;
+                return currentScore + awardedPoints; 
+            }); 
 
-            // C. Ghi nhận Award
+            // B. Ghi nhận Award
             const awardId = push(awardsRef).key;
             const awardData = {
                 awardId: awardId,
                 side: winningSide,
                 points: awardedPoints,
-                judges: votesForWinningSide.map(v => v.judge), // Chỉ lưu GĐ đã vote đúng
+                judges: votesForWinningSide.map(v => v.judge),
                 timestamp: Date.now(),
                 voteKeys: allVoteKeysInWindow 
             };
-            set(ref(db, `awards/${awardId}`), awardData);
+            await set(ref(db, `awards/${awardId}`), awardData);
 
-            // D. Xóa TẤT CẢ votes đã dùng trong cửa sổ 2s (Quan trọng nhất)
-            // Khởi tạo các thao tác xóa
+            // C. Xóa TẤT CẢ votes đã dùng
             allVoteKeysInWindow.forEach(voteKey => {
                 set(ref(db, `votes/${voteKey}`), null);
             });
             
-            // E. Hiển thị trên màn hình local
+            // D. Hiển thị flash cục bộ (Tùy chọn)
             quickPointFlash(winningSide);
             
-            // F. QUAN TRỌNG: Giải phóng lock sau một độ trễ ngắn để Firebase ổn định
+            // E. QUAN TRỌNG: Giải phóng Global Lock sau khi hoàn tất
+            // Đợi 300ms để đảm bảo lệnh xóa votes đã bắt đầu lan truyền
             setTimeout(() => {
-                isProcessingConsensus = false;
+                set(lockRef, false); 
             }, 300); 
 
         }).catch(err => {
-            console.error('Award Transaction Failed:', err);
-            isProcessingConsensus = false; // Luôn giải phóng lock khi có lỗi
+            console.error('Award/Lock Transaction Failed:', err);
+            // Cố gắng giải phóng khóa khi có lỗi
+            set(lockRef, false); 
         });
         
-        return; // Thoát hàm ngay lập tức sau khi khởi tạo giao dịch
+        return; // Thoát hàm ngay lập tức
     }
 }
 
 
-/* --------------- Firebase Listeners --------------- */
+/* --------------- Firebase Listeners (Đã cập nhật) --------------- */
 
 // 1. Listen for Match State (score, time, names, etc.)
 onValue(matchRef, (snapshot) => {
@@ -699,15 +707,32 @@ onValue(awardsRef, (snapshot) => {
 });
 
 
-// 3. Listen for Votes (to check for consensus)
+// 3. Listen for Votes (to check consensus VÀ SYNC ĐÈN GIÁM ĐỊNH LÊN MÀN HÌNH LỚN)
 onValue(votesRef, (snapshot) => {
     const allVotes = snapshot.val() || {};
 
-    // QUAN TRỌNG: Ngăn chặn xử lý nếu đang trong quá trình cộng điểm và xóa votes
-    if (isProcessingConsensus) return; 
-    
-    // Không cần debounce nữa, vì cờ isProcessingConsensus đã đảm nhận vai trò này
-    checkConsensusAndAwardPointsLogic(allVotes); 
+    // 1. Logic ĐỒNG BỘ ĐÈN GIÁM ĐỊNH (SYNC LIGHTS) cho màn hình lớn
+    const now = Date.now();
+
+    Object.values(allVotes).forEach(vote => {
+        if ((now - vote.timestamp) <= VOTE_WINDOW) {
+            // Nếu phiếu bầu còn hợp lệ trong 2s
+            
+            // Hiển thị đèn tạm thời trên màn hình lớn
+            const el = document.getElementById(`light-${vote.side}-${vote.judge}`);
+            if(el){
+                const overlay = el.querySelector('.overlay');
+                overlay.innerText = '+' + vote.points;
+                // Bật lớp 'showPoints' để hiển thị số điểm
+                el.classList.add('on','showPoints');
+                const badge = el.querySelector('.badge'), sub = el.querySelector('.sub');
+                badge.style.visibility='hidden'; sub.style.visibility='hidden';
+            }
+        }
+    });
+
+    // 2. Logic XỬ LÝ ĐỒNG THUẬN (Sử dụng Global Lock)
+    checkConsensusAndAwardPointsLogic(allVotes);
 });
 
 
@@ -721,8 +746,8 @@ setInterval(() => {
   if(state.timerRunning || state.restRunning){
     // Đảm bảo chỉ trừ 1 giây khi đủ 1000ms
     if (elapsedMs >= 1000) { 
-        const secondsElapsed = Math.floor(elapsedMs / 1000); // Số giây thực sự trôi qua
-        lastTickTime = now; // Reset thời gian tick
+        const secondsElapsed = Math.floor(elapsedMs / 1000); // Số giây thực sự trôi qua
+        lastTickTime = now; // Reset thời gian tick
 
       if(state.timerRunning){
         let newTimeLeft = Math.max(0, state.timeLeft - secondsElapsed);
@@ -743,8 +768,8 @@ setInterval(() => {
       }
     }
   } else {
-    lastTickTime = now; // Reset tick time khi đồng hồ đang dừng để không bị nhảy khi resume
-  }
+    lastTickTime = now; // Reset tick time khi đồng hồ đang dừng để không bị nhảy khi resume
+  }
   
   updateDisplay();
 
