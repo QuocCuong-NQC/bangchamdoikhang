@@ -1,0 +1,92 @@
+:root {
+  --bg: #050405;
+  --panel: #0f1113;
+  --accent: #ffcc00;
+  --red1: #c82323;
+  --red2: #7a0d0d;
+  --blue1: #0b66ff;
+  --blue2: #002a8a;
+  --muted: rgba(255, 255, 255, 0.06);
+  --judge-light-off: #111;
+  --judge-light-on: #ffea3b;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:Inter, "Segoe UI", Tahoma, Arial, sans-serif;background:linear-gradient(180deg,#030303,#0b0b0b);color:#fff;}
+/* TOP DISPLAY - fills viewport */
+#displaySection{height:100vh;padding:18px;display:flex;align-items:center;justify-content:center;overflow:hidden;}
+.display-wrap{width:98%;max-width:1500px;background:linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.005));padding:20px;border-radius:14px;box-shadow:0 20px 80px rgba(0,0,0,.7);display:flex;gap:18px;align-items:stretch;position:relative;}
+/* SỬA LỖI MÀU ĐỎ: Đảm bảo left luôn là red-panel */
+.left {flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; position:relative;}
+.right {flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; position:relative;}
+.center {width:520px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px;}
+/* UPDATED: bigger title and subtitle */
+.title-top{font-size:48px; font-weight:900; color:var(--accent); text-transform:uppercase; letter-spacing:3px; text-align:center; margin-top:-18px;}
+.match-event{font-size:20px; color: rgba(255,255,255,0.95); font-weight:900; margin-top:8px; text-align:center;}
+.round-label{font-size:36px;color:#bdf6ff;font-weight:900;margin-top:8px;}
+.clock{background:linear-gradient(90deg,#fff6c0,#fff0a0);color:#000;padding:12px 22px;border-radius:16px;font-size:48px;font-weight:900;box-shadow:0 10px 30px rgba(255,204,0,0.12);min-width:220px;text-align:center;}
+.fighter-card{width:100%;border-radius:12px;padding:18px;display:flex;flex-direction:column;align-items:center;justify-content:center;}
+.red-panel{background:linear-gradient(180deg,var(--red1),var(--red2));}
+.blue-panel{background:linear-gradient(180deg,var(--blue1),var(--blue2));}
+.fighter-name{font-weight:900;font-size:20px;padding:6px 10px;border-radius:8px;background:rgba(255,255,255,0.06);text-transform:uppercase;}
+.score-big{font-size:110px;font-weight:900;text-shadow:0 8px 26px rgba(0,0,0,.6);}
+
+/* judge lights row under each fighter */
+.judge-lights{display:flex;gap:12px;margin-top:12px;justify-content:center;}
+.judge-light{width:84px;height:72px;border-radius:10px;background:var(--judge-light-off);display:flex;flex-direction:column;align-items:center;justify-content:center;color:#ddd;font-weight:900;transition:all .12s ease;position:relative;overflow:hidden;}
+.judge-light .badge{font-size:16px;z-index:1}
+.judge-light .sub{font-size:14px;opacity:.95;margin-top:4px;z-index:1}
+.judge-light.on{background:var(--judge-light-on);color:#000;box-shadow:0 10px 40px rgba(255,230,60,.28);transform:translateY(-4px) scale(1.02);}
+
+/* large +1/+2 overlay when light is on */
+.judge-light .overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:28px;z-index:2;pointer-events:none;opacity:0;transition:opacity .08s linear;}
+.judge-light.showPoints .overlay{opacity:1;color:#000}
+
+/* white flash overlay for winner */
+.winner-flash{ position:absolute; inset:0; background:rgba(255,255,255,0.95); mix-blend-mode:screen; pointer-events:none; opacity:0; transition:opacity .08s linear; border-radius:12px; }
+
+ /* CONTROL SECTION */
+section.section{padding:22px 6%;max-width:1400px;margin:0 auto 36px;}
+#controlSection{background:linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.005));border-radius:12px;box-shadow:0 12px 50px rgba(0,0,0,0.6);padding:20px;}
+.controls-top{display:flex;gap:12px;align-items:center;flex-wrap:wrap;justify-content:space-between;}
+.controls-left{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+label.small{color:var(--accent);font-weight:800;margin-right:6px;}
+input[type="text"],input[type="number"]{padding:10px 12px;border-radius:8px;border:none;background:rgba(255,255,255,0.04);color:#fff;font-weight:800;}
+.controls-row{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-top:12px;}
+.btn{padding:12px 18px;border-radius:10px;border:none;font-weight:900;cursor:pointer;box-shadow:0 8px 30px rgba(0,0,0,0.45);}
+.btn-primary{background:var(--accent);color:#000;}
+.btn-ghost{background:transparent;border:1px solid rgba(255,255,255,0.06);color:#fff;}
+.btn-danger{background:#ff6b6b;color:#000;}
+.btn-blue{background:#63a0ff;color:#000;}
+.btn-large{padding:16px 22px;border-radius:12px;font-size:18px;}
+
+/* new round selection buttons */
+.select-rounds{display:flex;gap:8px;align-items:center;}
+.round-select-btn{padding:8px 10px;border-radius:8px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.04);color:#fff;cursor:pointer;font-weight:800;}
+.round-select-btn.active{background:var(--accent);color:#000;border-color:var(--accent);}
+
+/* REST timer small UI */
+.small-note{color:rgba(255,255,255,0.7);font-size:13px;}
+
+/* JUDGES SECTION (big single-card per device) */
+.judges{display:flex;flex-direction:column;gap:18px;margin-top:18px;}
+.judge-card{display:flex;flex-direction:column;gap:12px;padding:18px;border-radius:12px;background:linear-gradient(90deg, rgba(255,255,255,0.01), rgba(255,255,255,0.005));align-items:stretch;}
+.judge-header{text-align:center;font-weight:900;font-size:34px;color:var(--accent);}
+.judge-body{display:flex;gap:12px;align-items:center;justify-content:space-between;}
+.judge-column{flex:1;display:flex;flex-direction:column;gap:12px;align-items:center;}
+.vote-btn{padding:22px 28px;border-radius:12px;font-weight:900;min-width:160px;cursor:pointer;font-size:20px;}
+.v-red{background:linear-gradient(90deg,#ff8a8a,#ff4a4a);color:#000;}
+.v-blue{background:linear-gradient(90deg,#9ecbff,#4a88ff);color:#000;}
+
+/* responsive: each judge should fit phone */
+@media (max-width:900px){
+  .display-wrap{flex-direction:column;align-items:stretch;padding:16px;}
+  .center{order:-1;width:100%;}
+  .score-big{font-size:84px;}
+  .title-top{font-size:28px;}
+  .judge-header{font-size:26px;}
+  .vote-btn{min-width:140px;padding:18px 22px;font-size:18px;}
+}
+.footer-note{text-align:center;color:rgba(255,255,255,0.6);padding:18px;font-size:13px;}
+/* simple blink animation for win (not used; kept) */
+@keyframes strongBlink{0%{box-shadow:0 0 8px 8px rgba(255,255,255,0.25)}50%{box-shadow:0 0 40px 20px rgba(255,255,255,0.05)}100%{box-shadow:none}}
+.blink-win{animation:strongBlink 0.6s ease-in-out 8;}

@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>GIẢI IPES MỞ RỘNG NĂM 2025 — Bảng chấm điểm (Realtime V4.0 - Final)</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<section id="displaySection" aria-label="Màn hình trình chiếu">
+  <div class="display-wrap" id="display">
+    <div class="left fighter-card red-panel" id="leftCard">
+      <div class="fighter-name" id="displayRedName">VĐV ĐỎ</div>
+      <div class="score-big" id="displayRedScore">0</div>
+      <div class="judge-lights" id="displayRedLights"></div>
+          <div class="winner-flash" id="leftFlash" style="opacity:0;"></div>
+    </div>
+
+    <div class="center">
+      <div class="title-top" id="eventTitle">GIẢI IPES MỞ RỘNG NĂM 2025</div>
+      <div class="match-event" id="displayEventSub">Nội dung thi đấu: Đối kháng biểu diễn (chỉnh được)</div>
+
+          <div class="round-label" id="displayRound">Hiệp 1</div>
+
+      <div class="clock" id="displayClock">01:30</div>
+    </div>
+
+    <div class="right fighter-card blue-panel" id="rightCard">
+      <div class="fighter-name" id="displayBlueName">VĐV XANH</div>
+      <div class="score-big" id="displayBlueScore">0</div>
+      <div class="judge-lights" id="displayBlueLights"></div>
+          <div class="winner-flash" id="rightFlash" style="opacity:0;"></div>
+    </div>
+  </div>
+</section>
+
+<section id="controlSection" class="section" aria-label="Bảng điều khiển">
+  <div class="controls-top">
+    <div class="controls-left">
+      <label class="small">Tên Giải:</label>
+      <input id="tournamentName" type="text" value="GIẢI IPES MỞ RỘNG NĂM 2025" />
+      <label class="small">VĐV ĐỎ:</label>
+      <input id="redName" type="text" value="Quốc Cường" />
+      <label class="small">VĐV XANH:</label>
+      <input id="blueName" type="text" value="Hưng Thịnh" />
+    </div>
+
+    <div style="display:flex;gap:10px;align-items:center;">
+            <label class="small">Hiệp số:</label>
+      <input id="inputRound" type="number" value="1" min="1" style="width:80px"/>
+    </div>
+  </div>
+
+  <div class="controls-row" style="margin-top:14px;">
+    <button class="btn btn-primary btn-large" id="btnStart">Bắt đầu</button>
+    <button class="btn btn-ghost btn-large" id="btnPause">Dừng</button>
+    <button class="btn btn-ghost btn-large" id="btnResume">Tiếp tục</button>
+        <button class="btn btn-danger btn-large" id="btnReset">Reset</button>
+
+    <div style="flex:1"></div>
+
+    <button class="btn btn-ghost btn-large" id="btnFullscreenControl">Full màn hình</button>
+    <button class="btn btn-ghost btn-large" id="btnWinRed">Đỏ thắng</button>
+    <button class="btn btn-ghost btn-large" id="btnWinBlue">Xanh thắng</button>
+  </div>
+
+    <div style="margin-top:12px; display:flex; align-items:center; gap:12px;">
+    <label class="small">Chọn:</label>
+    <div class="select-rounds" id="roundSelects">
+      <button class="round-select-btn active" id="selRound1">Hiệp 1</button>
+      <button class="round-select-btn" id="selRound2">Hiệp 2</button>
+      <button class="round-select-btn" id="selRound3">Hiệp 3</button>
+      <button class="round-select-btn" id="selRest">Giải lao</button>
+    </div>
+
+    <div style="flex:1"></div>
+    <div class="small-note">Âm thanh báo: ON/OFF <input type="checkbox" id="soundToggle" checked></div>
+  </div>
+
+    <div style="margin-top:12px; display:flex; gap:12px; align-items:center;">
+    <label class="small">Nội dung thi đấu:</label>
+    <input id="eventSubInput" type="text" value="Đối kháng biểu diễn" style="flex:1; padding:10px; border-radius:8px; background:rgba(255,255,255,0.04); border:none; color:#fff; font-weight:800;">
+    </div>
+
+  <div style="margin-top:12px;display:flex;gap:12px;align-items:center;">
+    <button class="btn btn-ghost" onclick="manualScore('red',1)">+1 Đỏ (TT)</button>
+    <button class="btn btn-ghost" onclick="manualScore('red',-1)">-1 Đỏ (TT)</button>
+    <button class="btn btn-ghost" onclick="manualScore('blue',1)">+1 Xanh (TT)</button>
+    <button class="btn btn-ghost" onclick="manualScore('blue',-1)">-1 Xanh (TT)</button>
+
+    <div style="flex:1"></div>
+  </div>
+</section>
+
+<section class="section" id="judgesSection" aria-label="Giám định">
+  <div class="judges">
+
+    <div class="judge-card" id="judge1">
+      <div class="judge-header">GĐ1</div>
+      <div class="judge-body">
+        <div class="judge-column" style="align-items:flex-end;">
+          <div style="font-weight:900;margin-bottom:6px;color:#fff">ĐỎ</div>
+          <button class="vote-btn v-red" onclick="judgeVote(1,'red',1)">+1</button>
+          <button class="vote-btn v-red" onclick="judgeVote(1,'red',2)">+2</button>
+        </div>
+        <div style="width:2px;background:rgba(255,255,255,0.03);height:100%;"></div>
+        <div class="judge-column" style="align-items:flex-start;">
+          <div style="font-weight:900;margin-bottom:6px;color:#fff">XANH</div>
+          <button class="vote-btn v-blue" onclick="judgeVote(1,'blue',1)">+1</button>
+          <button class="vote-btn v-blue" onclick="judgeVote(1,'blue',2)">+2</button>
+        </div>
+      </div>
+          </div>
+
+    <div class="judge-card" id="judge2">
+      <div class="judge-header">GĐ2</div>
+      <div class="judge-body">
+        <div class="judge-column" style="align-items:flex-end;">
+          <div style="font-weight:900;margin-bottom:6px;color:#fff">ĐỎ</div>
+          <button class="vote-btn v-red" onclick="judgeVote(2,'red',1)">+1</button>
+          <button class="vote-btn v-red" onclick="judgeVote(2,'red',2)">+2</button>
+        </div>
+        <div style="width:2px;background:rgba(255,255,255,0.03);height:100%;"></div>
+        <div class="judge-column" style="align-items:flex-start;">
+          <div style="font-weight:900;margin-bottom:6px;color:#fff">XANH</div>
+          <button class="vote-btn v-blue" onclick="judgeVote(2,'blue',1)">+1</button>
+          <button class="vote-btn v-blue" onclick="judgeVote(2,'blue',2)">+2</button>
+        </div>
+        
+      </div>
+    </div>
+
+    <div class="judge-card" id="judge3">
+      <div class="judge-header">GĐ3</div>
+      <div class="judge-body">
+        <div class="judge-column" style="align-items:flex-end;">
+          <div style="font-weight:900;margin-bottom:6px;color:#fff">ĐỎ</div>
+          <button class="vote-btn v-red" onclick="judgeVote(3,'red',1)">+1</button>
+          <button class="vote-btn v-red" onclick="judgeVote(3,'red',2)">+2</button>
+        </div>
+        <div style="width:2px;background:rgba(255,255,255,0.03);height:100%;"></div>
+        <div class="judge-column" style="align-items:flex-start;">
+          <div style="font-weight:900;margin-bottom:6px;color:#fff">XANH</div>
+          <button class="vote-btn v-blue" onclick="judgeVote(3,'blue',1)">+1</button>
+          <button class="vote-btn v-blue" onclick="judgeVote(3,'blue',2)">+2</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<footer class="footer-note">Phiên bản v4.0 — Realtime Firebase. Upload lên GitHub Pages / Netlify để dùng nhiều thiết bị.</footer>
+
+<script type="module" src="script.js"></script>
+
+</body>
+</html>
