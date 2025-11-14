@@ -6,11 +6,11 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase
 import { getDatabase, ref, set, push, onValue, runTransaction, remove } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-database.js";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyArFyjGuW7fBuRYu8jOGw_03OQQXtJjcj8", // (Lưu ý: Bạn nên thay thế key này bằng key của chính mình)
+  apiKey: "AIzaSyArFyjGuW7fBuRYu8jOGw_03OQQXtQjcj8",
   authDomain: "ipes-2b9db.firebaseapp.com",
   databaseURL: "https://ipes-2b9db-default-rtdb.asia-southeast1.firebasedatabase.app",
   projectId: "ipes-2b9db",
-  storageBucket: "ipes-2b9db.appspot.com",
+  storageBucket: "ipes-2b9db.firebasestorage.app",
   messagingSenderId: "410102574315",
   appId: "1:410102574315:web:191862efacd5e14a62e2ae",
   measurementId: "G-SCKTXEWZ6E"
@@ -48,9 +48,7 @@ let state = {
 };
 window.state = state; // Đưa ra global scope để dễ debug
 
-// SỬA LỖI ĐÈN SÁNG VĨNH VIỄN: Thêm biến theo dõi trạng thái đèn
-let activeJudgeLights = {}; 
-
+// ** Cờ cục bộ đã được loại bỏ, thay bằng Global Lock trên Firebase **
 
 /* DOM (Lấy các phần tử HTML) */
 const displayRedScore = document.getElementById('displayRedScore');
@@ -112,7 +110,6 @@ function createJudgeLights(){
 }
 
 /* overlay show points for judge light */
-// Hàm này chỉ được gọi bởi Awards Listener để flash đèn sau khi CỘNG ĐIỂM
 function showJudgeOverlay(judge, side, points, dur=VOTE_WINDOW){
   const el = document.getElementById(`light-${side}-${judge}`);
   if(!el) return;
@@ -122,7 +119,6 @@ function showJudgeOverlay(judge, side, points, dur=VOTE_WINDOW){
   const badge = el.querySelector('.badge');
   const sub = el.querySelector('.sub');
   badge.style.visibility='hidden'; sub.style.visibility='hidden';
-  // Sử dụng setTimeout cục bộ cho Awards vì nó là hiệu ứng visual kéo dài sau khi chấm điểm
   if(state.judgeLightTimeouts[`${judge}-${side}`]) clearTimeout(state.judgeLightTimeouts[`${judge}-${side}`]);
   state.judgeLightTimeouts[`${judge}-${side}`] = setTimeout(()=>{ if(el){ el.classList.remove('showPoints'); overlay.innerText=''; badge.style.visibility='visible'; sub.style.visibility='visible'; el.classList.remove('on'); } delete state.judgeLightTimeouts[`${judge}-${side}`]; }, dur);
 }
@@ -211,7 +207,7 @@ window.judgeVote = function(judge, side, points){
       timestamp: Date.now()
     }).catch(err => console.error('pushVote err', err));
     
-    // Tách biệt logic đèn tín hiệu cục bộ: Sáng đèn 1s để báo đã bấm (CHỈ TRÊN THIẾT BỊ BẤM)
+    // Tách biệt logic đèn tín hiệu: Sáng đèn 1s để báo đã bấm (CHỈ TRÊN THIẾT BỊ BẤM)
     const el = document.getElementById(`light-${side}-${judge}`);
     if(el){ 
       const overlay = el.querySelector('.overlay');
@@ -221,13 +217,12 @@ window.judgeVote = function(judge, side, points){
       badge.style.visibility='hidden'; sub.style.visibility='hidden';
       // Tắt đèn tín hiệu sau 1s (1000ms), không đợi VOTE_WINDOW
       setTimeout(()=>{ 
-          // Chỉ xóa lớp 'showPoints' cục bộ sau 1s, đèn chính sẽ được quản lý bởi Listener
           if(el){ 
               el.classList.remove('showPoints'); 
               overlay.innerText=''; 
               badge.style.visibility='visible'; 
               sub.style.visibility='visible'; 
-              // KHÔNG XÓA el.classList.remove('on') ở đây, để Listener quyết định
+              el.classList.remove('on'); 
           } 
       }, 1000); 
     }
@@ -410,7 +405,7 @@ window.resetLocal = resetLocal; // Gán vào window
 
 
 /* ================================================================
-PHẦN 3: LOGIC FIREBASE (Code chính đã sửa lỗi V5.7)
+PHẦN 3: LOGIC FIREBASE (Code chính đã sửa lỗi V5.6)
 ================================================================
 */
 
@@ -534,7 +529,7 @@ window.pushVote = async function(voteData){
 }
 
 
-/* --------------- CORE LOGIC: CHECK CONSENSUS AND AWARD POINTS (V5.7 - GLOBAL LOCK & LIGHT FIX) --------------- */
+/* --------------- CORE LOGIC: CHECK CONSENSUS AND AWARD POINTS (V5.6 - GLOBAL LOCK IMPROVED) --------------- */
 function checkConsensusAndAwardPointsLogic(allVotes) {
     const now = Date.now();
     
@@ -635,7 +630,7 @@ function checkConsensusAndAwardPointsLogic(allVotes) {
             quickPointFlash(winningSide);
             
             // E. QUAN TRỌNG: Giải phóng Global Lock sau khi hoàn tất
-            // TĂNG THỜI GIAN CHỜ LÊN 800ms để đảm bảo lệnh xóa votes được đồng bộ trên các thiết bị.
+            // ĐÃ TĂNG THỜI GIAN CHỜ LÊN 800ms để đảm bảo lệnh xóa votes được đồng bộ trên các thiết bị.
             setTimeout(() => {
                 set(lockRef, false); 
             }, 800); 
@@ -651,7 +646,7 @@ function checkConsensusAndAwardPointsLogic(allVotes) {
 }
 
 
-/* --------------- Firebase Listeners (Đã cập nhật V5.7) --------------- */
+/* --------------- Firebase Listeners (Đã cập nhật) --------------- */
 
 // 1. Listen for Match State (score, time, names, etc.)
 onValue(matchRef, (snapshot) => {
@@ -713,24 +708,17 @@ onValue(awardsRef, (snapshot) => {
 });
 
 
-// 3. Listen for Votes (ĐÃ SỬA LỖI ĐÈN SÁNG VĨNH VIỄN)
+// 3. Listen for Votes (to check consensus VÀ SYNC ĐÈN GIÁM ĐỊNH LÊN MÀN HÌNH LỚN)
 onValue(votesRef, (snapshot) => {
     const allVotes = snapshot.val() || {};
-    const now = Date.now();
-
-    // Tạo một danh sách các đèn đáng lẽ phải sáng dựa trên votes hợp lệ (trong cửa sổ 2s)
-    let expectedActiveLights = {}; 
 
     // 1. Logic ĐỒNG BỘ ĐÈN GIÁM ĐỊNH (SYNC LIGHTS) cho màn hình lớn
+    const now = Date.now();
+
     Object.values(allVotes).forEach(vote => {
-        const judgeKey = `${vote.side}-${vote.judge}`;
-
         if ((now - vote.timestamp) <= VOTE_WINDOW) {
-            // A. Đèn sáng: Vote còn hợp lệ (trong cửa sổ 2s)
+            // Nếu phiếu bầu còn hợp lệ trong 2s
             
-            // Lưu trạng thái mong muốn
-            expectedActiveLights[judgeKey] = true;
-
             // Hiển thị đèn tạm thời trên màn hình lớn
             const el = document.getElementById(`light-${vote.side}-${vote.judge}`);
             if(el){
@@ -744,31 +732,7 @@ onValue(votesRef, (snapshot) => {
         }
     });
 
-    // 2. Logic TẮT ĐÈN (Xử lý các đèn đang sáng nhưng không còn vote hợp lệ)
-    // Duyệt qua các đèn đã được bật (activeJudgeLights)
-    Object.keys(activeJudgeLights).forEach(judgeKey => {
-        // Nếu đèn đang sáng nhưng không có vote hợp lệ nào trong expectedActiveLights
-        if (!expectedActiveLights[judgeKey]) {
-            const [side, judge] = judgeKey.split('-');
-            const el = document.getElementById(`light-${side}-${judge}`);
-            
-            if(el){
-                const overlay = el.querySelector('.overlay');
-                // Tắt đèn: Xóa các lớp 'on' và 'showPoints'
-                el.classList.remove('on','showPoints'); 
-                overlay.innerText = '';
-                const badge = el.querySelector('.badge'), sub = el.querySelector('.sub');
-                badge.style.visibility='visible'; sub.style.visibility='visible';
-            }
-            // Xóa khỏi danh sách đèn đang sáng
-            delete activeJudgeLights[judgeKey];
-        }
-    });
-    
-    // Cập nhật danh sách đèn đang sáng
-    activeJudgeLights = expectedActiveLights; 
-
-    // 3. Logic XỬ LÝ ĐỒNG THUẬN (Sử dụng Global Lock) - KHÔNG ĐỔI
+    // 2. Logic XỬ LÝ ĐỒNG THUẬN (Sử dụng Global Lock)
     checkConsensusAndAwardPointsLogic(allVotes);
 });
 
